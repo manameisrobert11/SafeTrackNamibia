@@ -230,6 +230,56 @@ export async function deleteIncident(incidentId: string) {
   }
 }
 
+export async function updateIncidentStatus({
+  incidentId,
+  status,
+  actor,
+}: {
+  incidentId: string;
+  status: IncidentStatus;
+  actor: string;
+}) {
+  try {
+    const incidents = await getIncidents();
+    const updateTime = formatSubmittedDateTime();
+    let updatedIncident: Incident | null = null;
+
+    const updatedIncidents = incidents.map((incident) => {
+      if (incident.id !== incidentId) {
+        return incident;
+      }
+
+      updatedIncident = {
+        ...incident,
+        status,
+        auditTrail: [
+          ...incident.auditTrail,
+          {
+            label: status,
+            time: updateTime,
+            note: `${actor} changed status to ${status}.`,
+          },
+        ],
+      };
+
+      return updatedIncident;
+    });
+
+    await saveIncidents(updatedIncidents);
+
+    return {
+      incidents: updatedIncidents,
+      incident: updatedIncident,
+    };
+  } catch (error) {
+    console.log('Error updating incident status:', error);
+    return {
+      incidents: [],
+      incident: null,
+    };
+  }
+}
+
 export async function resetDemoIncidents() {
   try {
     await AsyncStorage.setItem(INCIDENTS_KEY, JSON.stringify(defaultIncidents));

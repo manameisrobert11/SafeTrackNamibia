@@ -4,7 +4,15 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 type BottomNavProps = {
-  active: 'Dashboard' | 'Report' | 'Incidents' | 'Profile';
+  active:
+    | 'Dashboard'
+    | 'Report'
+    | 'Incidents'
+    | 'Profile'
+    | 'Manager'
+    | 'Reports'
+    | 'Alerts';
+  mode?: 'employee' | 'admin';
 };
 
 const items = [
@@ -14,10 +22,19 @@ const items = [
   { label: 'Profile', route: '/profile', icon: 'person-outline' },
 ] as const;
 
-export default function BottomNav({ active }: BottomNavProps) {
+const adminItems = [
+  { label: 'Manager', route: '/admin-dashboard', icon: 'home-outline' },
+  { label: 'Reports', route: '/admin-reports', icon: 'documents-outline' },
+  { label: 'Alerts', route: '/admin-alerts', icon: 'notifications-outline' },
+  { label: 'Profile', route: '/admin-profile', icon: 'person-outline' },
+] as const;
+
+export default function BottomNav({ active, mode = 'employee' }: BottomNavProps) {
+  const navItems = mode === 'admin' ? adminItems : items;
+
   return (
     <View style={styles.bottomNav}>
-      {items.map((item) => {
+      {navItems.map((item) => {
         const isActive = active === item.label;
 
         return (

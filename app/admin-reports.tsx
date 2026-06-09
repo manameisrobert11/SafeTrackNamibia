@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
-  Image,
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -14,60 +14,78 @@ import {
 
 import BottomNav from '../components/BottomNav';
 import { AppUser, getCurrentUser } from '../services/authStorage';
-import { getIncidents, Incident, IncidentStatus } from '../services/incidentsStorage';
+import {
+  getIncidents,
+  Incident,
+  IncidentStatus,
+  updateIncidentStatus,
+} from '../services/incidentsStorage';
 
 type Filter = 'All' | IncidentStatus;
+const workflow: IncidentStatus[] = ['Open', 'In Progress', 'Resolved'];
 
-export default function Incidents() {
+export default function AdminReports() {
+  const [admin, setAdmin] = useState<AppUser | null>(null);
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [activeFilter, setActiveFilter] = useState<Filter>('All');
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadIncidents = useCallback(async () => {
-    const [user, savedIncidents] = await Promise.all([
+  const loadReports = useCallback(async () => {
+    const [currentUser, savedIncidents] = await Promise.all([
       getCurrentUser(),
       getIncidents(),
     ]);
 
-    if (user?.role === 'admin') {
-      router.replace('/admin-reports');
+    if (!currentUser || currentUser.role !== 'admin') {
+      router.replace('/');
       return;
     }
 
-    setCurrentUser(user);
+    setAdmin(currentUser);
     setIncidents(savedIncidents);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      loadIncidents();
-    }, [loadIncidents])
+      loadReports();
+    }, [loadReports])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadIncidents();
+    await loadReports();
     setRefreshing(false);
   };
 
+  const updateStatus = async (incidentId: string, status: IncidentStatus) => {
+    if (!admin) return;
+
+    const result = await updateIncidentStatus({
+      incidentId,
+      status,
+      actor: admin.name,
+    });
+
+    setIncidents(result.incidents);
+    Alert.alert('Status Updated', `Incident ${incidentId} is now ${status}.`);
+  };
+
   const normalizedQuery = query.trim().toLowerCase();
-  const userIncidents = currentUser
-    ? incidents.filter((incident) => incident.reporter === currentUser.name)
-    : incidents;
-  const filteredIncidents = userIncidents.filter((incident) => {
+  const filteredIncidents = incidents.filter((incident) => {
     const matchesStatus =
       activeFilter === 'All' || incident.status === activeFilter;
     const matchesQuery =
       normalizedQuery.length === 0 ||
       [
+        incident.id,
         incident.title,
         incident.type,
         incident.severity,
+        incident.status,
+        incident.reporter,
         incident.location,
         incident.department,
-        incident.id,
       ]
         .join(' ')
         .toLowerCase()
@@ -79,7 +97,7 @@ export default function Incidents() {
   return (
     <View style={styles.page}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Incidents</Text>
+        <Text style={styles.headerTitle}>Admin Reports</Text>
       </View>
 
       <ScrollView
@@ -88,16 +106,16 @@ export default function Incidents() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <Text style={styles.title}>Incident History</Text>
+        <Text style={styles.title}>All Accident Reports</Text>
         <Text style={styles.subtitle}>
-          Track submitted reports, evidence, and resolution status.
+          Search reports, review creators, and update status.
         </Text>
 
         <View style={styles.searchRow}>
           <Ionicons name="search-outline" size={18} color={colors.muted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by ID, location, type..."
+            placeholder="Search by ID, reporter, department..."
             placeholderTextColor={colors.muted}
             value={query}
             onChangeText={setQuery}
@@ -105,76 +123,95 @@ export default function Incidents() {
         </View>
 
         <View style={styles.filterRow}>
-          {(['All', 'Open', 'In Progress', 'Resolved'] as const).map(
-            (filter) => (
-              <TouchableOpacity
-                key={filter}
+          {(['All', 'Open', 'In Progress', 'Resolved'] as const).map((filter) => (
+            <TouchableOpacity
+              key={filter}
+              style={[
+                styles.filter,
+                activeFilter === filter && styles.filterActive,
+              ]}
+              onPress={() => setActiveFilter(filter)}
+            >
+              <Text
                 style={[
-                  styles.filter,
-                  activeFilter === filter && styles.filterActive,
+                  styles.filterText,
+                  activeFilter === filter && styles.filterActiveText,
                 ]}
-                onPress={() => setActiveFilter(filter)}
               >
-                <Text
-                  style={[
-                    styles.filterText,
-                    activeFilter === filter && styles.filterActiveText,
-                  ]}
-                >
-                  {filter}
-                </Text>
-              </TouchableOpacity>
-            )
-          )}
+                {filter}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {filteredIncidents.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Ionicons name="clipboard-outline" size={34} color={colors.muted} />
-            <Text style={styles.emptyTitle}>No incidents found</Text>
-            <Text style={styles.emptyText}>
-              Submitted incident reports will appear here.
-            </Text>
+            <Ionicons name="documents-outline" size={34} color={colors.muted} />
+            <Text style={styles.emptyTitle}>No reports found</Text>
+            <Text style={styles.emptyText}>Try another search or status filter.</Text>
           </View>
         ) : (
           filteredIncidents.map((incident) => (
-            <TouchableOpacity
-              key={incident.id}
-              style={styles.incidentCard}
-              onPress={() =>
-                router.push({
-                  pathname: '/incident-details',
-                  params: {
-                    id: incident.id,
-                  },
-                })
-              }
-            >
-              <View style={styles.iconBox}>
-                {incident.photo ? (
-                  <Image source={{ uri: incident.photo }} style={styles.thumb} />
-                ) : (
-                  <Ionicons name="warning-outline" size={19} color={colors.primaryDark} />
-                )}
+            <View key={incident.id} style={styles.card}>
+              <View style={styles.cardTop}>
+                <View style={styles.cardBody}>
+                  <Text style={styles.cardTitle}>{incident.title}</Text>
+                  <Text style={styles.meta}>
+                    #{incident.id} | {incident.type} | {incident.severity}
+                  </Text>
+                  <Text style={styles.meta}>
+                    Created by {incident.reporter} | {incident.dateTime}
+                  </Text>
+                  <Text style={styles.meta}>
+                    {incident.location} | {incident.department}
+                  </Text>
+                </View>
+
+                <StatusBadge status={incident.status} />
               </View>
 
-              <View style={styles.incidentBody}>
-                <Text style={styles.incidentTitle}>{incident.title}</Text>
-                <Text style={styles.incidentMeta}>
-                  #{incident.id} | {incident.type} | {incident.severity}
-                </Text>
-                <Text style={styles.incidentLocation}>
-                  {incident.location} | {incident.department}
-                </Text>
+              <View style={styles.actionsRow}>
+                {workflow.map((status) => (
+                  <TouchableOpacity
+                    key={status}
+                    style={[
+                      styles.statusButton,
+                      incident.status === status && styles.statusButtonActive,
+                    ]}
+                    onPress={() => updateStatus(incident.id, status)}
+                  >
+                    <Text
+                      style={[
+                        styles.statusButtonText,
+                        incident.status === status && styles.statusButtonTextActive,
+                      ]}
+                    >
+                      {status}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
-              <StatusBadge status={incident.status} />
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.detailsButton}
+                onPress={() =>
+                  router.push({
+                    pathname: '/incident-details',
+                    params: {
+                      id: incident.id,
+                    },
+                  })
+                }
+              >
+                <Text style={styles.detailsText}>Open details and audit trail</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.primaryDark} />
+              </TouchableOpacity>
+            </View>
           ))
         )}
       </ScrollView>
 
-      <BottomNav active="Incidents" />
+      <BottomNav active="Reports" mode="admin" />
     </View>
   );
 }
@@ -183,14 +220,14 @@ function StatusBadge({ status }: { status: IncidentStatus }) {
   return (
     <View
       style={[
-        styles.statusBadge,
+        styles.badge,
         status === 'Resolved' && styles.resolvedBadge,
         status === 'In Progress' && styles.progressBadge,
       ]}
     >
       <Text
         style={[
-          styles.statusText,
+          styles.badgeText,
           status === 'Resolved' && styles.resolvedText,
           status === 'In Progress' && styles.progressText,
         ]}
@@ -289,59 +326,84 @@ const styles = StyleSheet.create({
     color: colors.black,
     fontWeight: '900',
   },
-  incidentCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  card: {
     backgroundColor: colors.white,
     borderRadius: 14,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  iconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#FFF7DB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
   },
-  thumb: {
-    width: '100%',
-    height: '100%',
-  },
-  incidentBody: {
+  cardBody: {
     flex: 1,
     minWidth: 0,
   },
-  incidentTitle: {
-    fontWeight: '900',
+  cardTitle: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '900',
   },
-  incidentMeta: {
+  meta: {
+    marginTop: 3,
     color: colors.muted,
     fontSize: 11,
-    marginTop: 2,
+    fontWeight: '600',
   },
-  incidentLocation: {
+  actionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  statusButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  statusButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  statusButtonText: {
     color: colors.muted,
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '800',
   },
-  statusBadge: {
-    backgroundColor: '#FFF2CE',
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+  statusButtonTextActive: {
+    color: colors.black,
+    fontWeight: '900',
   },
-  statusText: {
-    fontSize: 10,
+  detailsButton: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  detailsText: {
     color: colors.primaryDark,
     fontWeight: '900',
+    fontSize: 13,
+  },
+  badge: {
+    backgroundColor: '#FFF2CE',
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  badgeText: {
+    color: colors.primaryDark,
+    fontWeight: '900',
+    fontSize: 10,
   },
   resolvedBadge: {
     backgroundColor: '#DCFCE7',

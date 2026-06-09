@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import BottomNav from '../components/BottomNav';
+import { AppUser, getCurrentUser } from '../services/authStorage';
 import {
   getIncidents,
   getTrainingRecords,
@@ -22,14 +23,22 @@ import {
 export default function Dashboard() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [trainingRecords, setTrainingRecords] = useState<TrainingRecord[]>([]);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadDashboard = useCallback(async () => {
-    const [savedIncidents, savedTraining] = await Promise.all([
+    const [user, savedIncidents, savedTraining] = await Promise.all([
+      getCurrentUser(),
       getIncidents(),
       getTrainingRecords(),
     ]);
 
+    if (user?.role === 'admin') {
+      router.replace('/admin-dashboard');
+      return;
+    }
+
+    setCurrentUser(user);
     setIncidents(savedIncidents);
     setTrainingRecords(savedTraining);
   }, []);
@@ -90,7 +99,9 @@ export default function Dashboard() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <Text style={styles.welcome}>Welcome, Saara</Text>
+        <Text style={styles.welcome}>
+          Welcome, {currentUser?.name.split(' ')[0] || 'Saara'}
+        </Text>
         <Text style={styles.subtitle}>Stay safe today!</Text>
 
         <View style={styles.statsGrid}>

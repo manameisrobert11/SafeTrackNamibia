@@ -13,12 +13,18 @@ import {
   View,
 } from 'react-native';
 
+import {
+  isValidDemoPassword,
+  loginUser,
+  resolveUserRole,
+} from '../services/authStorage';
+
 export default function Index() {
   const [companyCode, setCompanyCode] = useState('STNAM');
   const [email, setEmail] = useState('saaraekandjo999@gmail.com');
   const [password, setPassword] = useState('safetrack');
 
-  const login = () => {
+  const login = async () => {
     if (!companyCode.trim() || !email.trim() || !password.trim()) {
       Alert.alert(
         'Missing details',
@@ -27,7 +33,24 @@ export default function Index() {
       return;
     }
 
-    router.replace('/dashboard');
+    const role = resolveUserRole(email, companyCode);
+
+    if (!isValidDemoPassword(role, password)) {
+      Alert.alert(
+        'Invalid password',
+        role === 'admin'
+          ? 'Use admin123, manager123, or safetrack for the admin demo.'
+          : 'Use safetrack for the employee demo.'
+      );
+      return;
+    }
+
+    const user = await loginUser({
+      companyCode,
+      email,
+    });
+
+    router.replace(user.role === 'admin' ? '/admin-dashboard' : '/dashboard');
   };
 
   return (
@@ -37,7 +60,7 @@ export default function Index() {
     >
       <View style={styles.logoBox}>
         <Image
-          source={require('../../assets/images/safetrack-logo-transparent.png')}
+          source={require('../assets/images/safetrack-logo-transparent.png')}
           style={styles.logoImage}
           resizeMode="contain"
         />
@@ -89,11 +112,29 @@ export default function Index() {
           <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
 
-        <Text style={styles.forgot}>Forgot Password?</Text>
+        <TouchableOpacity
+          onPress={() =>
+            Alert.alert(
+              'Password Reset',
+              'Please contact your SafeTrack administrator to reset your password.'
+            )
+          }
+        >
+          <Text style={styles.forgot}>Forgot Password?</Text>
+        </TouchableOpacity>
 
-        <Text style={styles.register}>
-          Don&apos;t have an account? <Text style={styles.gold}>Register</Text>
-        </Text>
+        <TouchableOpacity
+          onPress={() =>
+            Alert.alert(
+              'Register',
+              'Your company administrator can create your SafeTrack account.'
+            )
+          }
+        >
+          <Text style={styles.register}>
+            Don&apos;t have an account? <Text style={styles.gold}>Register</Text>
+          </Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );

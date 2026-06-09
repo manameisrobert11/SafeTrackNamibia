@@ -16,8 +16,9 @@ import {
   getIncidents,
   Incident,
   IncidentStatus,
-  saveIncidents,
+  updateIncidentStatus,
 } from '../services/incidentsStorage';
+import { AppUser, getCurrentUser } from '../services/authStorage';
 
 const workflow: IncidentStatus[] = ['Open', 'In Progress', 'Resolved'];
 
@@ -26,10 +27,22 @@ export default function IncidentDetails() {
   const incidentId = String(params.id || '');
 
   const [incident, setIncident] = useState<Incident | null>(null);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
 
   const loadIncident = useCallback(async () => {
-    const incidents = await getIncidents();
+    const [incidents, user] = await Promise.all([getIncidents(), getCurrentUser()]);
     const selectedIncident = incidents.find((item) => item.id === incidentId);
+
+    setCurrentUser(user);
+
+    if (
+      user?.role === 'employee' &&
+      selectedIncident &&
+      selectedIncident.reporter !== user.name
+    ) {
+      router.replace('/incidents');
+      return;
+    }
 
     if (selectedIncident) {
       setIncident(selectedIncident);
@@ -43,42 +56,23 @@ export default function IncidentDetails() {
   );
 
   const updateStatus = async (newStatus: IncidentStatus) => {
-    if (!incident) return;
+    if (!incident || currentUser?.role !== 'admin') return;
 
-    const updateTime = new Intl.DateTimeFormat('en-NA', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date());
-
-    const updatedIncident: Incident = {
-      ...incident,
+    const result = await updateIncidentStatus({
+      incidentId: incident.id,
       status: newStatus,
-      auditTrail: [
-        ...incident.auditTrail,
-        {
-          label: newStatus,
-          time: updateTime,
-          note: `Status changed to ${newStatus}.`,
-        },
-      ],
-    };
+      actor: currentUser.name,
+    });
 
-    const incidents = await getIncidents();
-    const updatedIncidents = incidents.map((item) =>
-      item.id === incident.id ? updatedIncident : item
-    );
-
-    await saveIncidents(updatedIncidents);
-    setIncident(updatedIncident);
+    if (result.incident) {
+      setIncident(result.incident);
+    }
 
     Alert.alert('Status Updated', `Incident status changed to ${newStatus}.`);
   };
 
   const handleDeleteIncident = () => {
-    if (!incident) return;
+    if (!incident || currentUser?.role !== 'admin') return;
 
     Alert.alert(
       'Delete Incident',
@@ -112,6 +106,8 @@ export default function IncidentDetails() {
       </View>
     );
   }
+
+  const isAdmin = currentUser?.role === 'admin';
 
   return (
     <View style={styles.page}>
@@ -172,29 +168,33 @@ export default function IncidentDetails() {
             </>
           )}
 
-          <Text style={styles.sectionTitle}>Status Workflow</Text>
+          {isAdmin && (
+            <>
+              <Text style={styles.sectionTitle}>Status Workflow</Text>
 
-          <View style={styles.statusButtons}>
-            {workflow.map((status) => (
-              <TouchableOpacity
-                key={status}
-                style={[
-                  styles.workflowButton,
-                  incident.status === status && styles.workflowButtonActive,
-                ]}
-                onPress={() => updateStatus(status)}
-              >
-                <Text
-                  style={[
-                    styles.workflowText,
-                    incident.status === status && styles.workflowTextActive,
-                  ]}
-                >
-                  {status}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+              <View style={styles.statusButtons}>
+                {workflow.map((status) => (
+                  <TouchableOpacity
+                    key={status}
+                    style={[
+                      styles.workflowButton,
+                      incident.status === status && styles.workflowButtonActive,
+                    ]}
+                    onPress={() => updateStatus(status)}
+                  >
+                    <Text
+                      style={[
+                        styles.workflowText,
+                        incident.status === status && styles.workflowTextActive,
+                      ]}
+                    >
+                      {status}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
 
           <Text style={styles.sectionTitle}>Status Updates</Text>
 
@@ -216,10 +216,12 @@ export default function IncidentDetails() {
             ))}
           </View>
 
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteIncident}>
-            <Ionicons name="trash-outline" size={18} color={colors.danger} />
-            <Text style={styles.deleteText}>Delete Incident</Text>
-          </TouchableOpacity>
+          {isAdmin && (
+            <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteIncident}>
+              <Ionicons name="trash-outline" size={18} color={colors.danger} />
+              <Text style={styles.deleteText}>Delete Incident</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </View>

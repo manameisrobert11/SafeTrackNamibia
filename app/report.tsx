@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { router } from 'expo-router';
-import React, { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
   Alert,
   Image,
@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 
 import BottomNav from '../components/BottomNav';
+import { AppUser, getCurrentUser } from '../services/authStorage';
 import {
   addIncident,
   createIncidentReference,
@@ -51,10 +52,29 @@ export default function Report() {
   const [witnesses, setWitnesses] = useState('');
   const [factors, setFactors] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [gps, setGps] = useState<{
     latitude: number;
     longitude: number;
   } | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      async function loadUser() {
+        const user = await getCurrentUser();
+
+        if (user?.role === 'admin') {
+          router.replace('/admin-dashboard');
+          return;
+        }
+
+        setCurrentUser(user);
+        setDepartment(user?.department || 'Operations');
+      }
+
+      loadUser();
+    }, [])
+  );
 
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -134,7 +154,7 @@ export default function Report() {
       location: locationName,
       department,
       description,
-      reporter: 'Saara Ekandjo',
+      reporter: currentUser?.name || 'Saara Ekandjo',
       witnesses,
       factors,
       photo,

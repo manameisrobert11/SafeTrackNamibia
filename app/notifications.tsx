@@ -9,18 +9,29 @@ import {
   Incident,
   TrainingRecord,
 } from '../services/incidentsStorage';
+import { getCurrentUser } from '../services/authStorage';
 
 export default function Notifications() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [trainingRecords, setTrainingRecords] = useState<TrainingRecord[]>([]);
 
   const loadNotifications = useCallback(async () => {
-    const [savedIncidents, savedTraining] = await Promise.all([
+    const [user, savedIncidents, savedTraining] = await Promise.all([
+      getCurrentUser(),
       getIncidents(),
       getTrainingRecords(),
     ]);
 
-    setIncidents(savedIncidents);
+    if (user?.role === 'admin') {
+      router.replace('/admin-alerts');
+      return;
+    }
+
+    setIncidents(
+      user
+        ? savedIncidents.filter((incident) => incident.reporter === user.name)
+        : savedIncidents
+    );
     setTrainingRecords(savedTraining);
   }, []);
 
